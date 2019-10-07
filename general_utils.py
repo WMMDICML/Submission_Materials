@@ -3,8 +3,6 @@ from __future__ import print_function
 
 from builtins import object
 
-__author__ = 'alexis'
-
 import autograd.numpy as np
 import time
 import pandas as pd
