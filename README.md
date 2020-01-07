@@ -4,4 +4,4 @@ This repository contains an implementation of the WMMD and other two sample test
 
 We provide a tutorial with a step by step procedure on a toy example to illustrate the use of the WMMD in Tutorial.ipynb.
 
-This code borrowed heavily from the MMD implementation in ['https://github.com/wittawatj/interpretable-test'].
+This code borrowed heavily from the MMD implementation in https://github.com/wittawatj/interpretable-test.
