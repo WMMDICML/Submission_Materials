@@ -12,6 +12,7 @@ import math
 import matplotlib.pyplot as plt
 import autograd.numpy as np
 
+'''This is exactly as in https://github.com/wittawatj/interpretable-test'''
 
 class Kernel(with_metaclass(ABCMeta, object)):
     """Abstract class for kernels"""

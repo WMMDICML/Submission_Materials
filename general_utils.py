@@ -1,4 +1,3 @@
-"""A module containing convenient methods for general machine learning"""
 from __future__ import print_function
 
 from builtins import object
@@ -15,6 +14,7 @@ import data as data
 import numpy as np
 import kernel_utils
 import test_utils as tst
+import random
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.linear_model import LogisticRegression
 from sklearn.calibration import CalibratedClassifierCV
@@ -183,78 +183,9 @@ def stat_comparisons_with_error(methods,param_name,params,size=300, mu = 0, var=
         
     return stat_values
 
-class ContextTimer(object):
-    """
-    A class used to time an executation of a code snippet.
-    Use it with with .... as ...
-    For example,
-        with ContextTimer() as t:
-            # do something
-        time_spent = t.secs
-    From https://www.huyng.com/posts/python-performance-analysis
-    """
-
-    def __init__(self, verbose=False):
-        self.verbose = verbose
-
-    def __enter__(self):
-        self.start = time.time()
-        return self
-
-    def __exit__(self, *args):
-        self.end = time.time()
-        self.secs = self.end - self.start
-        if self.verbose:
-            print('elapsed time: %f ms' % (self.secs * 1000))
 
 
-# end class ContextTimer
 
-class NumpySeedContext(object):
-    """
-    A context manager to reset the random seed by numpy.random.seed(..).
-    Set the seed back at the end of the block.
-    """
-
-    def __init__(self, seed):
-        self.seed = seed
-
-    def __enter__(self):
-        rstate = np.random.get_state()
-        self.cur_state = rstate
-        np.random.seed(self.seed)
-        return self
-
-    def __exit__(self, *args):
-        np.random.set_state(self.cur_state)
-
-
-# end class NumpySeedContext
-
-class ChunkIterable(object):
-    """
-    Construct an Iterable such that each call to its iterator returns a tuple
-    of two indices (f, t) where f is the starting index, and t is the ending
-    index of a chunk. f and t are (chunk_size) apart except for the last tuple
-    which will always cover the rest.
-    """
-
-    def __init__(self, start, end, chunk_size):
-        self.start = start
-        self.end = end
-        self.chunk_size = chunk_size
-
-    def __iter__(self):
-        s = self.start
-        e = self.end
-        c = self.chunk_size
-        # Probably not a good idea to use list. Waste memory.
-        L = list(range(s, e, c))
-        L.append(e)
-        return zip(L, L[1:])
-
-
-# end ChunkIterable
 
 def constrain(val, min_val, max_val):
     return min(max_val, max(min_val, val))
@@ -391,11 +322,15 @@ def propensity_score(x1,x2):
     
     return propensity[1].values
 
-def stratify_propensity(propensity_score,B):
+def stratify_propensity(propensity_score,x1,B):
     '''
     Outputs B mutually exclusive (equal sized) subgroups stratified based on the propensity score.
     B: number of subsets
+    propensity_score = propensity values of the combined sample (x1,x2)
     '''
-    ind = np.argsort(propensity_score)
-    split_list = np.array_split(ind, B)
-    return split_list
+    ind_1 = np.argsort(propensity_score[:len(x1[:,0])])
+    ind_2 = np.argsort(propensity_score[len(x1[:,0]):])
+    split_list_x1 = np.array_split(ind_1, B)
+    split_list_x2 = np.array_split(ind_2, B)
+    
+    return split_list_x1, split_list_x2

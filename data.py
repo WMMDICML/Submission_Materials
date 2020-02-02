@@ -264,99 +264,8 @@ class SSSameGauss_with_SB(SampleSource):
         
         return x1[:,np.newaxis], x2[:,np.newaxis], y1[:,np.newaxis], y2[:,np.newaxis]
 
-class SSGaussMeanDiff(SampleSource):
-    """Toy dataset one in Chwialkovski et al., 2015.
-    P = N(0, I), Q = N( (my,0,0, 000), I). Only the first dimension of the means
-    differ."""
-    def __init__(self, d, my=1.0):
-        """
-        d: dimension of the data
-        """
-        self.d = d
-        self.my = my
-
-    def dim(self):
-        return self.d
-
-    def sample(self, n, seed):
-        rstate = np.random.get_state()
-        np.random.seed(seed)
-
-        d = self.d
-        mean_y = np.hstack((self.my, np.zeros(d-1) ))
-        X = np.random.randn(n, d)
-        Y = np.random.randn(n, d) + mean_y
-        np.random.set_state(rstate)
-        return TSTData(X, Y, label='gmd_d%d'%self.d)
-
-class SSGaussVarDiff(SampleSource):
-    """Toy dataset two in Chwialkovski et al., 2015.
-    P = N(0, I), Q = N(0, diag((2, 1, 1, ...))). Only the variances of the first
-    dimension differ."""
-
-    def __init__(self, d, var_d1=2.0):
-        """
-        d: dimension of the data
-        var_d1: variance of the first dimension. 2 by default.
-        """
-        self.d = d
-        self.var_d1 = var_d1
-
-    def dim(self):
-        return self.d
-
-    def sample(self, n, seed):
-        rstate = np.random.get_state()
-        np.random.seed(seed)
-
-        d = self.d
-        var_d1 = self.var_d1
-        std_y = np.diag(np.hstack((np.sqrt(var_d1), np.ones(d-1) )))
-        X = np.random.randn(n, d)
-        Y = np.random.randn(n, d).dot(std_y)
-        np.random.set_state(rstate)
-        return TSTData(X, Y, label='gvd')
-    
-
-class SSBlobs(SampleSource):
-    """Mixture of 2d Gaussians arranged in a 2d grid. This dataset is used 
-    in Chwialkovski et al., 2015 as well as Gretton et al., 2012. 
-    Part of the code taken from Dino Sejdinovic and Kacper Chwialkovski's code."""
-
-    def __init__(self, blob_distance=5, num_blobs=4, stretch=2, angle=old_div(math.pi,4.0)):
-        self.blob_distance = blob_distance
-        self.num_blobs = num_blobs
-        self.stretch = stretch
-        self.angle = angle
-
-    def dim(self):
-        return 2
-
-    def sample(self, n, seed):
-        rstate = np.random.get_state()
-        np.random.seed(seed)
-
-        x = gen_blobs(stretch=1, angle=0, blob_distance=self.blob_distance,
-                num_blobs=self.num_blobs, num_samples=n)
-
-        y = gen_blobs(stretch=self.stretch, angle=self.angle,
-                blob_distance=self.blob_distance, num_blobs=self.num_blobs,
-                num_samples=n)
-
-        np.random.set_state(rstate)
-        return TSTData(x, y, label='blobs_s%d'%seed)
 
 
-def gen_blobs(stretch, angle, blob_distance, num_blobs, num_samples):
-    """Generate 2d blobs dataset """
-
-    # rotation matrix
-    r = np.array( [[math.cos(angle), -math.sin(angle)], [math.sin(angle), math.cos(angle)]] )
-    eigenvalues = np.diag(np.array([np.sqrt(stretch), 1]))
-    mod_matix = np.dot(r, eigenvalues)
-    mean = old_div(float(blob_distance * (num_blobs-1)), 2)
-    mu = np.random.randint(0, num_blobs,(num_samples, 2))*blob_distance - mean
-    return np.random.randn(num_samples,2).dot(mod_matix) + mu
 
 def same(x):
     return x
@@ -366,12 +275,11 @@ def cube(x):
 
 def generate_samples_random(size=1000, mu = 0, var=1, dx=1, dy=1, noise = "gaussian",
                             f1='linear', f2='linear',seed = None):
-    '''Generate null or alternative post-nonlinear samples
+    '''Generate null or alternative nonlinear samples with different degrees of confounding
     1. X1 and X2 independent Gaussians - confounding variables
-    2. Y = f1(<a,Z> + b + noise) and Y = f2(<c,Z> + d + noise) 
+    2. Y = f1(X1) + noise and Y = f2(X2)
     Arguments:
         size : number of samples
-        sType: Null or Alternative
         mu: mean of X
         var: variance of X
         dx: Dimension of X
@@ -426,14 +334,21 @@ def generate_samples_random(size=1000, mu = 0, var=1, dx=1, dy=1, noise = "gauss
     if noise == 'gaussian':
         noise1 = np.random.multivariate_normal(np.zeros(dy), np.eye(dy)*0.5, size)
         noise2 = np.random.multivariate_normal(np.zeros(dy), np.eye(dy)*0.5, size)
+        noise1 = np.matrix(noise1)
+        noise2 = np.matrix(noise2)
         
     elif noise == 'exp':
         noise1 = numpy.random.exponential(scale=1.0, size=size)
         noise2 = numpy.random.exponential(scale=1.0, size=size)
+        noise1 = np.matrix(noise1)
+        noise2 = np.matrix(noise2)
     
     if dx == dy:
-        Y1 = f1(X1) + noise1
-        Y2 = f2(X2) + noise2
+        Y1 = X1; Y2=X2
+        Y1[:,0] = f1(X1[:,0]) + noise1[:,0]
+        Y2[:,0] = f2(X2[:,0]) + noise2[:,0]
+        Y1[:,1:] = f1(X1[:,1:]) + noise1[:,1:]
+        Y2[:,1:] = f2(X2[:,1:]) + noise2[:,1:]
     else:
         Y1 = f1(X1 * Axy) + noise1
         Y2 = f2(X2 * Axy) + noise2

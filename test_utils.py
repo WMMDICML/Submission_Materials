@@ -1,4 +1,9 @@
-"""Module containing many types of two sample test algorithms"""
+
+
+"""Module containing various types of two sample test algorithms 
+with the same structure as https://github.com/wittawatj/interpretable-test"""
+
+
 from __future__ import print_function
 from __future__ import division
 
@@ -98,15 +103,13 @@ class HotellingT2Test(TwoSampleTest):
 # -------------------------------------------------------------------------------------------
 # -------------------------------------------------------------------------------------------
 
-'''
 class BTest(TwoSampleTest):
     """Block Two-Sample test with MMD^2 statistic.
     """
-    def __init__(self, kernel, alpha=0.01):
+    def __init__(self, alpha=0.01):
         """
         kernel: an instance of Kernel
         """
-        self.kernel = kernel
         self.alpha = alpha
     
     def perform_test(self, wtst_data):
@@ -114,14 +117,9 @@ class BTest(TwoSampleTest):
         {alpha: 0.01, pvalue: 0.0002, test_stat: 2.3, h0_rejected: True, ...}
         tst_data: an instance of TSTData
         """
-        X1, X2, Y1, Y2 = wtst_data.x1x2y1y2()
-        stat, null_var = BTest.Btest_stat(X, Y, self.kernel, self.blocksize)
-        p_value = 1 - stats.norm.cdf(stat,0,np.sqrt(null_var))
-        results = {'alpha': self.alpha, 'pvalue': pval, 'test_stat': stat,
-                   'h0_rejected': pval < self.alpha}
-        return results
-    
-    def block_indeces(self, wtst_data, B=None):
+        raise NotImplementedError()
+        
+    def block_indeces(wtst_data, B=None):
         """ Outputs list of indeces of B mutually exclusive (equal sized) subgroups stratified based on the                   propensity score.
             B = number of blocks
         """
@@ -129,28 +127,29 @@ class BTest(TwoSampleTest):
         if B == None:
             blocksize = np.sqrt(len(X1[:, 0]))
             # of blocks
-            B = floor(len(X1[:, 0] / blocksize)
+            B = np.floor(len(X1[:, 0]) / blocksize)
             
-        #propensity_scores = propensity_score(X1,X2)
-        #split_list = stratify_propensity(propensity_scores,B)
+        propensity_scores = general_utils.propensity_score(X1,X2)
+        split_list_x1, split_list_x2 = general_utils.stratify_propensity(propensity_scores,X1,B)
         
-        return B
+        return split_list_x1, split_list_x2
     
     @staticmethod
-    def compute_pvalue(x1,x2):
-        tst_data = data.TSTData(x1[:, 1][:,np.newaxis], x2[:, 1][:,np.newaxis])
-        mmd2_stat = QuadMMDTest.compute_stat(tst_data)
-
-        X, Y = tst_data.xy()
-        k = self.kernel
-        repeats = self.n_permute
-        list_mmd2 = QuadMMDTest.permutation_list_mmd2(X, Y, k, repeats)
-        # approximate p-value with the permutations 
-        pvalue = np.mean(list_mmd2 > mmd2_stat)
-        return pvalue
+    def compute_stat(wtst_data):
+        """ Output the statistic of the test
+        """ 
+        
+        return BTest.Btest(wtst_data,B=None,output='stat')
+                      
+    @staticmethod
+    def compute_pvalue(wtst_data):
+        """ Output the p_value of the test
+        """ 
+        
+        return BTest.Btest(wtst_data,B=None,output='p_value')
         
     @staticmethod
-    def Btest_stat(wtst_data, kernel,B=None):
+    def Btest(wtst_data,B=None,output='stat'):
     
         """
         B-Test is a fast maximum discrepancy (MMD) kernel two-sample test that has low sample complexity,
@@ -161,31 +160,57 @@ class BTest(TwoSampleTest):
         :param B: number of blocks
         :return p-value for the hypothhesis of equal sample distribution
         """
-        # of samples
-        n = len(Y1[:, 0])
         
         # list of indeces for each block
-        block_indeces = block_indeces(wtst_data, B=B)
+        split_list_x1, split_list_x2 = BTest.block_indeces(wtst_data=wtst_data, B=B)
         X1, X2, Y1, Y2 = wtst_data.x1x2y1y2()
-        stat = 0
-        stat_null = 0
-        k = self.kernel
-        repeats = self.n_permute
+        out = 0
                       
-        for indeces in block_indeces:
-            stat += run_full_MMD_test(X1[indeces,:], X2[indeces,:],
-                                     Y1[indeces,:], Y2[indeces,:])
+        for indeces_1, indeces_2 in zip(split_list_x1, split_list_x2):
             
-            stat_null.append(QuadMMDTest.permutation_list_mmd2(X, Y, k, repeats))
-            
-            stat_null += 1
-                      
-        stat = np.mean(stat)
-        null_var = np.cov(stat_null)
-                      
-        return stat, null_var
-'''        
+            tst_data = data.TSTData(Y1[indeces_1,:], Y2[indeces_2,:])
+            tr, te = tst_data.split_tr_te(tr_proportion=0.5, seed=10)
+            xtr, ytr = tr.xy()
+            xytr = tr.stack_xy()
+            sig2 = general_utils.meddistance(xytr, subsample=1000)
+            k = kernel_utils.KGauss(sig2)
+    
+            # choose the best parameter and perform a test with permutations
+            med = general_utils.meddistance(tr.stack_xy(), 1000)
+            list_gwidth = np.hstack( ( (med**2) *(2.0**np.linspace(-4, 4, 20) ) ) )
+            list_gwidth.sort()
 
+            list_kernels = [kernel_utils.KGauss(gw2) for gw2 in list_gwidth]
+
+            # grid search to choose the best Gaussian width
+            besti, powers = QuadMMDTest.grid_search_kernel(tr, list_kernels, alpha=0.01)
+            # perform test 
+            best_ker = list_kernels[besti]
+    
+            mmd_test = QuadMMDTest(best_ker, n_permute=200, alpha=0.01)
+                      
+            if output == 'stat':
+                out += mmd_test.compute_stat(te)
+    
+            if output == 'p_value':
+                out += mmd_test.compute_pvalue(te)
+
+        return out / len(split_list_x1)              
+    
+def run_full_B_test(x1, x2, y1, y2,alpha=0.01,output='p_value'):
+    '''
+    Runs full WMMD test with all optimization procedures included
+    output = desried output, one of 'p_value', 'stat', 'full'
+    require same number of instances in both populations
+    '''
+    wtst_data = data.WTSTData(x1, x2, y1, y2)
+    B_test = BTest(alpha=alpha)
+                      
+    if output == 'stat':
+        return B_test.compute_stat(wtst_data)
+    if output == 'p_value':
+        return B_test.compute_pvalue(wtst_data)
+    
 # -------------------------------------------------------------------------------------------
 # -------------------------------------------------------------------------------------------
 
@@ -549,7 +574,7 @@ class WQuadMMDTest(TwoSampleTest):
         return list_mmd2
 
     @staticmethod
-    def kernel_mean_matching(X1, X2, kx, B=5, eps=None):
+    def kernel_mean_matching(X1, X2, kx, B=10, eps=None):
         '''
         An implementation of Kernel Mean Matching, note that this implementation uses its own kernel parameter
         References:
